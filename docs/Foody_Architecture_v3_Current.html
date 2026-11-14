@@ -1,0 +1,34 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Foody — Architecture</title><style>
+:root{font-family:'Noto Sans Thai','Leelawadee UI',Tahoma,system-ui,sans-serif;color:#29272a;background:#fbfaf8}
+*{box-sizing:border-box}body{margin:0;padding:30px 24px 60px}main{max-width:1260px;margin:auto}
+h1{font-size:26px;line-height:1.3;margin:0 0 8px;color:#ca4b18}h2{font-size:18px;margin:28px 0 12px}
+.sub{color:#746e6c;margin:0 0 18px;font-size:14px}.note{background:#fff6eb;border-left:3px solid #ea6927;padding:11px 14px;border-radius:5px;margin:14px 0;font-size:14px}
+.diagram{background:white;border:1px solid #ece6e0;border-radius:12px;padding:14px;overflow-x:auto;scrollbar-width:none}
+.diagram::-webkit-scrollbar{display:none}svg{display:block;max-width:none;margin:auto}
+.legend{font-size:13px;color:#6b6664;display:flex;gap:18px;flex-wrap:wrap;margin:12px 0}
+.badge{display:inline-block;font-weight:700;font-size:12px;border-radius:7px;padding:3px 8px;background:#fff0e7;color:#c74d1c}
+.card{border:1px solid #eadfd5;background:#fff;border-radius:10px;padding:16px}
+.planned{border:2px dashed #d9cac0;background:#fdfbfa;color:#655e5c}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.title{font-weight:750;margin-bottom:4px}.mini{font-size:12px;color:#746e6c}.arrow{font-size:25px;color:#d96425;text-align:center;margin:7px 0}
+.flow{max-width:850px;margin:auto}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center}
+.line{height:1px;background:#eadfd5;margin:12px 0}
+svg text{font-family:'Noto Sans Thai','Leelawadee UI',Tahoma,system-ui,sans-serif}
+section{margin-top:24px}@media(max-width:680px){body{padding:18px 12px 35px}.grid,.grid.two,.row{grid-template-columns:1fr}h1{font-size:22px}.diagram{padding:6px}}
+</style></head><body><main><h1>Foody — Architecture</h1><p class="sub">Foody · Version 3.0 · ตรวจตามซอร์ส Android ณ 13 พ.ย. 2569 · ยังไม่ได้ยืนยัน Build/AVD</p>
+<h2>Architecture ปัจจุบัน (มีโค้ด)</h2>
+<div class="diagram"><div class="flow">
+<div class="card"><div class="title">Android Application · Kotlin + Jetpack Compose + Material 3</div><div class="mini">MainActivity · UI ตาม Role · Screens: Staff / Kitchen / Owner / Login / Settings</div></div>
+<div class="arrow">↓</div>
+<div class="grid two"><div class="card"><div class="title">FoodyStore : AndroidViewModel</div><div class="mini">UI State · Route · Demo Login · Business Actions · Coroutines</div></div><div class="card"><div class="title">Assets</div><div class="mini">food-1.txt … food-8.txt · รูปอาหาร Base64</div></div></div>
+<div class="arrow">↓</div>
+<div class="card"><div class="title">Room / SQLite ภายใน Android เครื่องนั้น</div><div class="mini">foody_state(id, json) · SavedStateDao · JSON: tables, foods, orders, sales, notifications</div></div>
+<div class="note">ไม่มี REST/Retrofit, FastAPI, Server Database, Repository แยกชั้น หรือ Sync ข้าม Emulator ในซอร์สปัจจุบัน</div>
+</div></div>
+<h2>Architecture เป้าหมาย (ยังไม่ได้ทำ)</h2>
+<div class="diagram planned"><div class="grid two">
+<div class="card planned"><div class="title">Android Layer · Planned</div><div class="mini">Compose UI → ViewModel → Repository → Retrofit/OkHttp + Room Cache; Loading/Error/Offline; Notification Receiver</div></div>
+<div class="card planned"><div class="title">Server Layer · Planned</div><div class="mini">FastAPI → Auth/Role Validation → Session/Orders/Payments → SQL Database; Transactions / Idempotency / Audit Trail</div></div>
+</div><div class="arrow">⟷ HTTPS REST (ยังไม่เชื่อม)</div></div>
+<p class="note">เอกสาร v2 เคยแสดงชั้น Backend, JWT, WorkManager และ Notification เสมือนเป็น Architecture ปัจจุบัน จึงเปลี่ยนมาระบุเป็นเป้าหมายที่ยังไม่ implement</p>
+</main></body></html>
