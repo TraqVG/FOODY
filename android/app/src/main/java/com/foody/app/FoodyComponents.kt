@@ -34,24 +34,28 @@ fun timeText(value:Long):String=SimpleDateFormat("HH:mm",Locale("th","TH")).appl
 @Composable
 fun FoodyTopBar(title:String,onBack:(()->Unit)?=null,onProfile:(()->Unit)?=null) {
     Surface(shadowElevation=3.dp,color=FoodyOrange) {
-        Row(
-            modifier=Modifier.fillMaxWidth().height(76.dp)
+        Box(
+            modifier=Modifier.fillMaxWidth()
                 .background(Brush.horizontalGradient(listOf(FoodyOrangeDark,FoodyOrange)))
-                .padding(horizontal=16.dp),
-            verticalAlignment=Alignment.CenterVertically
-        ){
-            if(onBack!=null){
-                IconButton(onClick=onBack){
-                    Icon(Icons.Default.ArrowBack,"กลับ",tint=Color.White)
+                .statusBarsPadding()
+        ) {
+            Row(
+                modifier=Modifier.fillMaxWidth().height(68.dp).padding(horizontal=16.dp),
+                verticalAlignment=Alignment.CenterVertically
+            ){
+                if(onBack!=null){
+                    IconButton(onClick=onBack){
+                        Icon(Icons.Default.ArrowBack,"กลับ",tint=Color.White)
+                    }
                 }
-            }
-            Column(Modifier.weight(1f)) {
-                if(onBack==null) Text("Foody",color=Color.White.copy(alpha=.88f),fontSize=14.sp,fontWeight=FontWeight.Bold)
-                Text(title,color=Color.White,fontSize=22.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
-            }
-            if(onProfile!=null) {
-                IconButton(onClick=onProfile) {
-                    Icon(Icons.Default.AccountCircle,"โปรไฟล์และตั้งค่า",tint=Color.White,modifier=Modifier.size(29.dp))
+                Column(Modifier.weight(1f)) {
+                    if(onBack==null) Text("Foody",color=Color.White.copy(alpha=.88f),fontSize=14.sp,fontWeight=FontWeight.Bold)
+                    Text(title,color=Color.White,fontSize=22.sp,fontWeight=FontWeight.Bold,maxLines=1,overflow=TextOverflow.Ellipsis)
+                }
+                if(onProfile!=null) {
+                    IconButton(onClick=onProfile) {
+                        Icon(Icons.Default.AccountCircle,"โปรไฟล์และตั้งค่า",tint=Color.White,modifier=Modifier.size(29.dp))
+                    }
                 }
             }
         }

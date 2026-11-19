@@ -99,8 +99,16 @@ fun ReportsScreen(state:FoodyStore) {
                 SectionTitle("ยอดขายวันนี้")
                 Spacer(Modifier.height(16.dp))
                 val tz=TimeZone.getTimeZone("Asia/Bangkok")
-                val values=(10..16).map{hour->
-                    state.sales.filter{state.timeIsToday(it.time) && Calendar.getInstance(tz).apply{timeInMillis=it.time}.get(Calendar.HOUR_OF_DAY)==hour}.sumOf{it.amount}
+                val saleHours=recent.map{
+                    Calendar.getInstance(tz).apply{timeInMillis=it.time}.get(Calendar.HOUR_OF_DAY)
+                }
+                val startHour=if(saleHours.isEmpty()) 10 else {
+                    val anchor=saleHours.maxOrNull() ?: 10
+                    if(anchor in 10..16) 10 else (anchor-3).coerceIn(0,17)
+                }
+                val hours=(startHour..(startHour+6)).toList()
+                val values=hours.map{hour->
+                    recent.filter{Calendar.getInstance(tz).apply{timeInMillis=it.time}.get(Calendar.HOUR_OF_DAY)==hour}.sumOf{it.amount}
                 }
                 val max=(values.maxOrNull()?:0).coerceAtLeast(1)
                 Row(Modifier.fillMaxWidth().height(160.dp),horizontalArrangement=Arrangement.spacedBy(6.dp),
@@ -111,7 +119,7 @@ fun ReportsScreen(state:FoodyStore) {
                             Box(Modifier.fillMaxWidth(.73f).height((9+115*value/max).dp)
                                 .background(if(value==0)FoodyPeach else FoodyOrange,RoundedCornerShape(topStart=7.dp,topEnd=7.dp)))
                             Spacer(Modifier.height(6.dp))
-                            SafeText("${index+10}",12,color=FoodyMuted)
+                            SafeText(String.format("%02d",hours[index]),12,color=FoodyMuted)
                         }
                     }
                 }
