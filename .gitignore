@@ -1,0 +1,29 @@
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.iml
+*.hprof
+*.apk
+*.aab
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+backend/*.sqlite3
+backend/*.sqlite3-wal
+backend/*.sqlite3-shm
+backend/*.log
+
+# OS / Temp / Backups
+.DS_Store
+Thumbs.db
+*.log
+*.status
+*.bak
+*.zip

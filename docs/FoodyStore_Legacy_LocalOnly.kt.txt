@@ -1,0 +1,301 @@
+package com.foody.app
+
+import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.Calendar
+import java.util.Locale
+import java.util.TimeZone
+
+enum class FoodyRole(val label: String) {
+    STAFF("พนักงานเสิร์ฟ"), KITCHEN("พนักงานครัว"), OWNER("เจ้าของร้าน")
+}
+
+data class Food(val id: Int, val name: String, val price: Int, val category: String, val image: Int, val available: Boolean = true)
+data class Seat(val id: Int, val guests: Int = 0)
+data class Line(val foodId: Int, val name: String, val price: Int, val qty: Int, val note: String = "")
+data class Order(val id: Int, val tableId: Int, val staffEmail: String, val time: Long, val lines: List<Line>, val status: String = "PENDING")
+data class Sale(val id: Int, val tableId: Int, val time: Long, val amount: Int, val orderIds: List<Int>)
+data class CartItem(val foodId: Int, val qty: Int = 1, val note: String = "")
+
+@Entity(tableName = "foody_state")
+data class SavedState(@PrimaryKey val id: Int = 1, val json: String)
+
+@Dao
+interface SavedStateDao {
+    @Query("SELECT * FROM foody_state WHERE id = 1 LIMIT 1")
+    suspend fun read(): SavedState?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun write(state: SavedState)
+}
+
+@Database(entities = [SavedState::class], version = 1, exportSchema = false)
+abstract class FoodyDatabase : RoomDatabase() {
+    abstract fun stateDao(): SavedStateDao
+}
+
+class FoodyStore(app: Application) : AndroidViewModel(app) {
+    private val dao = Room.databaseBuilder(app, FoodyDatabase::class.java, "foody_local.db")
+        .fallbackToDestructiveMigration(false).build().stateDao()
+
+    var loaded by mutableStateOf(false)
+        private set
+    var email by mutableStateOf("")
+        private set
+    var role by mutableStateOf<FoodyRole?>(null)
+        private set
+    var route by mutableStateOf("login")
+        private set
+    var currentTable by mutableStateOf(1)
+        private set
+    var guestInput by mutableStateOf("1")
+    var message by mutableStateOf("")
+    var notifications by mutableStateOf(true)
+        private set
+
+    val tables = mutableStateListOf<Seat>()
+    val foods = mutableStateListOf<Food>()
+    val orders = mutableStateListOf<Order>()
+    val sales = mutableStateListOf<Sale>()
+    val cart = mutableStateListOf<CartItem>()
+
+    init {
+        seed()
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) { runCatching { dao.read()?.json }.getOrNull() }
+            if (stored != null) runCatching { restore(stored) }
+            loaded = true
+        }
+    }
+
+    private fun seed() {
+        tables.clear()
+        (1..6).forEach { tables.add(Seat(it, when(it) {2 -> 4; 3 -> 2; 6 -> 3; else -> 0})) }
+        foods.clear()
+        foods.addAll(listOf(
+            Food(1,"ข้าวกะเพราหมูสับ",69,"อาหารจานเดียว",1),
+            Food(2,"ข้าวผัดกุ้ง",89,"อาหารจานเดียว",2),
+            Food(3,"ผัดซีอิ๊วหมู",79,"อาหารจานเดียว",3),
+            Food(4,"ชาไทย",45,"เครื่องดื่ม",4),
+            Food(5,"ต้มยำกุ้ง",120,"กับข้าว",5),
+            Food(6,"ผัดไทยกุ้ง",85,"อาหารจานเดียว",6),
+            Food(7,"ข้าวเหนียวมะม่วง",60,"ของหวาน",7),
+            Food(8,"น้ำเปล่า",20,"เครื่องดื่ม",8)
+        ))
+        orders.clear()
+        val now=System.currentTimeMillis()
+        orders.add(Order(1001,2,"staff@foody.shop",now-600000,listOf(Line(1,"ข้าวกะเพราหมูสับ",69,2),Line(4,"ชาไทย",45,1))))
+        orders.add(Order(1002,3,"staff@foody.shop",now-350000,listOf(Line(3,"ผัดซีอิ๊วหมู",79,1)),"READY"))
+        orders.add(Order(1003,6,"staff@foody.shop",now-90000,listOf(Line(2,"ข้าวผัดกุ้ง",89,1))))
+        sales.clear()
+        sales.add(Sale(501,5,now-7200000,279,listOf(998)))
+    }
+
+    fun login(inputEmail: String, password: String): Boolean {
+        val candidate=inputEmail.trim().lowercase(Locale.ROOT)
+        val newRole=when(candidate) {
+            "staff@foody.shop" -> FoodyRole.STAFF
+            "kitchen@foody.shop" -> FoodyRole.KITCHEN
+            "owner@foody.shop" -> FoodyRole.OWNER
+            else -> null
+        }
+        if(newRole==null || password!="foody123") {
+            message="อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+            return false
+        }
+        email=candidate
+        role=newRole
+        route=homeFor(newRole)
+        message=""
+        return true
+    }
+    private fun homeFor(r: FoodyRole) = when(r) {
+        FoodyRole.STAFF->"tables"
+        FoodyRole.KITCHEN->"kitchen"
+        FoodyRole.OWNER->"reports"
+    }
+    fun logout() {
+        role=null
+        email=""
+        cart.clear()
+        message=""
+        route="login"
+    }
+    fun go(name: String) { route=name; message="" }
+    fun home() { go(role?.let(::homeFor) ?: "login") }
+    fun table(id: Int): Seat = tables.first{it.id==id}
+    fun selectTable(id: Int) {
+        currentTable=id
+        guestInput=if(table(id).guests==0) "1" else table(id).guests.toString()
+        cart.clear()
+        go("table")
+    }
+    fun setGuests(n: Int) { guestInput=n.coerceIn(1,20).toString() }
+    fun openTable(): Boolean {
+        if(role!=FoodyRole.STAFF) return false
+        val guests=guestInput.toIntOrNull() ?: return false
+        if(guests !in 1..20 || table(currentTable).guests!=0) return false
+        updateSeat(currentTable,guests)
+        cart.clear()
+        go("menu")
+        persist()
+        return true
+    }
+    private fun updateSeat(id:Int,guests:Int) {
+        val i=tables.indexOfFirst { it.id==id }
+        if(i>=0) tables[i]=tables[i].copy(guests=guests)
+    }
+    fun add(foodId:Int) {
+        if(role!=FoodyRole.STAFF || table(currentTable).guests==0 || foods.none{it.id==foodId && it.available}) return
+        val i=cart.indexOfFirst{it.foodId==foodId}
+        if(i>=0) cart[i]=cart[i].copy(qty=cart[i].qty+1) else cart.add(CartItem(foodId))
+    }
+    fun cartQty(id:Int) = cart.firstOrNull{it.foodId==id}?.qty?:0
+    fun qty(id:Int,value:Int) {
+        val i=cart.indexOfFirst{it.foodId==id}
+        if(i>=0) { if(value<1) cart.removeAt(i) else cart[i]=cart[i].copy(qty=value.coerceAtMost(99)) }
+    }
+    fun note(id:Int,note:String) {
+        val i=cart.indexOfFirst{it.foodId==id}
+        if(i>=0) cart[i]=cart[i].copy(note=note.take(160))
+    }
+    fun cartTotal()=cart.sumOf{ x->(foods.firstOrNull{it.id==x.foodId}?.price?:0)*x.qty }
+    fun sendOrder():Boolean {
+        if(role!=FoodyRole.STAFF || table(currentTable).guests==0 || cart.isEmpty()) return false
+        if(cart.any{c -> foods.none{it.id==c.foodId && it.available}}) {
+            message="มีเมนูหยุดขาย กรุณาตรวจสอบรายการ"
+            return false
+        }
+        val lines=cart.map { c->
+            val f=foods.first { it.id==c.foodId }
+            Line(f.id,f.name,f.price,c.qty,c.note)
+        }
+        val nextId=(orders.maxOfOrNull { it.id } ?: 1000)+1
+        orders.add(Order(nextId,currentTable,email,System.currentTimeMillis(),lines))
+        cart.clear()
+        go("table")
+        persist()
+        return true
+    }
+    fun ordersOf(tableId:Int)=orders.filter{it.tableId==tableId && it.status!="CHECKED_OUT" && it.status!="CANCELLED"}
+    fun total(tableId:Int)=ordersOf(tableId).sumOf { order->order.lines.sumOf{it.price*it.qty} }
+    fun canCheckout(tableId:Int) = ordersOf(tableId).isNotEmpty() && ordersOf(tableId).all{it.status=="READY" || it.status=="SERVED"}
+    fun markReady(orderId:Int) {
+        if(role!=FoodyRole.KITCHEN) return
+        updateOrder(orderId,"READY",setOf("PENDING"))
+    }
+    fun markServed(orderId:Int) {
+        if(role!=FoodyRole.STAFF) return
+        updateOrder(orderId,"SERVED",setOf("READY"))
+    }
+    private fun updateOrder(orderId:Int,status:String,allowed:Set<String>) {
+        val i=orders.indexOfFirst{it.id==orderId}
+        if(i>=0 && orders[i].status in allowed) { orders[i]=orders[i].copy(status=status);persist() }
+    }
+    fun checkout():Boolean {
+        if(role!=FoodyRole.STAFF || !canCheckout(currentTable)) return false
+        val relevant=ordersOf(currentTable)
+        val amount=relevant.sumOf{order->order.lines.sumOf{it.price*it.qty}}
+        sales.add(Sale((sales.maxOfOrNull{it.id}?:500)+1,currentTable,System.currentTimeMillis(),amount,relevant.map{it.id}))
+        relevant.forEach{item->
+            val i=orders.indexOfFirst{it.id==item.id}
+            if(i>=0) orders[i]=orders[i].copy(status="CHECKED_OUT")
+        }
+        updateSeat(currentTable,0)
+        cart.clear()
+        go("tables")
+        persist()
+        return true
+    }
+    fun toggleMenu(foodId:Int) {
+        if(role!=FoodyRole.OWNER) return
+        val i=foods.indexOfFirst{it.id==foodId}
+        if(i>=0) { foods[i]=foods[i].copy(available=!foods[i].available);persist() }
+    }
+    fun saveMenu(id:Int?,name:String,price:Int,category:String) {
+        if(role!=FoodyRole.OWNER || name.isBlank() || price<=0) return
+        val existing=foods.indexOfFirst{it.id==id}
+        if(existing>=0) foods[existing]=foods[existing].copy(name=name.trim(),price=price,category=category)
+        else foods.add(Food((foods.maxOfOrNull{it.id}?:0)+1,name.trim(),price,category,8))
+        persist()
+    }
+    fun deleteMenu(id:Int) {
+        if(role!=FoodyRole.OWNER) return
+        foods.removeAll{it.id==id}
+        persist()
+    }
+    fun changeNotifications(value:Boolean) { notifications=value; persist() }
+    fun timeIsToday(time:Long)=isCalendarMatch(time,0)
+    fun timeIsMonth(time:Long)=isCalendarMatch(time,1)
+    fun timeIsYear(time:Long)=isCalendarMatch(time,2)
+    private fun isCalendarMatch(time:Long,precision:Int):Boolean {
+        val tz=TimeZone.getTimeZone("Asia/Bangkok")
+        val a=Calendar.getInstance(tz).apply{timeInMillis=time}
+        val b=Calendar.getInstance(tz)
+        if(a.get(Calendar.YEAR)!=b.get(Calendar.YEAR)) return false
+        if(precision==2) return true
+        if(a.get(Calendar.MONTH)!=b.get(Calendar.MONTH)) return false
+        if(precision==1) return true
+        return a.get(Calendar.DAY_OF_MONTH)==b.get(Calendar.DAY_OF_MONTH)
+    }
+    fun salesTotal(precision:Int)=sales.filter { s-> when(precision){0->timeIsToday(s.time);1->timeIsMonth(s.time);else->timeIsYear(s.time)} }.sumOf{it.amount}
+
+    private fun persist() {
+        if(!loaded) return
+        val snapshot=encode().toString()
+        viewModelScope.launch(Dispatchers.IO) { runCatching { dao.write(SavedState(json=snapshot)) } }
+    }
+    private fun encode():JSONObject=JSONObject().apply{
+        put("tables",JSONArray().apply{tables.forEach { put(JSONObject().put("id",it.id).put("guests",it.guests)) }})
+        put("foods",JSONArray().apply{foods.forEach { put(JSONObject().put("id",it.id).put("name",it.name).put("price",it.price).put("category",it.category).put("image",it.image).put("available",it.available)) }})
+        put("orders",JSONArray().apply{orders.forEach { o->
+            put(JSONObject().put("id",o.id).put("tableId",o.tableId).put("staffEmail",o.staffEmail).put("time",o.time).put("status",o.status)
+                .put("lines",JSONArray().apply{o.lines.forEach{ l->put(JSONObject().put("foodId",l.foodId).put("name",l.name).put("price",l.price).put("qty",l.qty).put("note",l.note)) }}))
+        }})
+        put("sales",JSONArray().apply{sales.forEach{ s->put(JSONObject().put("id",s.id).put("tableId",s.tableId).put("time",s.time).put("amount",s.amount)
+            .put("orderIds",JSONArray(s.orderIds))) }})
+        put("notifications",notifications)
+    }
+    private fun restore(source:String) {
+        val root=JSONObject(source)
+        val ts=root.getJSONArray("tables")
+        val fs=root.getJSONArray("foods")
+        val os=root.getJSONArray("orders")
+        val ss=root.getJSONArray("sales")
+        val newTables=(0 until ts.length()).map { i->ts.getJSONObject(i).let{Seat(it.getInt("id"),it.getInt("guests"))} }
+        val newFoods=(0 until fs.length()).map { i->fs.getJSONObject(i).let{Food(it.getInt("id"),it.getString("name"),it.getInt("price"),it.getString("category"),it.getInt("image"),it.getBoolean("available"))} }
+        val newOrders=(0 until os.length()).map { i->os.getJSONObject(i).let{ o->
+            val ls=o.getJSONArray("lines")
+            val items=(0 until ls.length()).map{j->ls.getJSONObject(j).let{Line(it.getInt("foodId"),it.getString("name"),it.getInt("price"),it.getInt("qty"),it.optString("note"))}}
+            Order(o.getInt("id"),o.getInt("tableId"),o.getString("staffEmail"),o.getLong("time"),items,o.getString("status"))
+        }}
+        val newSales=(0 until ss.length()).map { i->ss.getJSONObject(i).let{ o->
+            val ids=o.getJSONArray("orderIds")
+            Sale(o.getInt("id"),o.getInt("tableId"),o.getLong("time"),o.getInt("amount"),(0 until ids.length()).map{ids.getInt(it)})
+        }}
+        tables.clear();tables.addAll(newTables)
+        foods.clear();foods.addAll(newFoods)
+        orders.clear();orders.addAll(newOrders)
+        sales.clear();sales.addAll(newSales)
+        notifications=root.optBoolean("notifications",true)
+    }
+}
